@@ -118,6 +118,8 @@ public abstract class AbstractConnection implements Closeable {
 
     private boolean                                                            weakreferences   = false;
     private boolean                                                            connected        = false;
+    
+    private int                                                                workerThreadCount = THREADCOUNT;
 
     private AbstractTransport                                                  transport;
     private ExecutorService                                                    workerThreadPool;
@@ -136,7 +138,7 @@ public abstract class AbstractConnection implements Closeable {
 
         pendingErrorQueue = new ConcurrentLinkedQueue<>();
         workerThreadPool =
-                Executors.newFixedThreadPool(THREADCOUNT, new NameableThreadFactory("DBus Worker Thread-", false));
+                Executors.newFixedThreadPool(workerThreadCount, new NameableThreadFactory("DBus Worker Thread-", false));
 
         senderService =
                 Executors.newFixedThreadPool(1, new NameableThreadFactory("DBus Sender Thread-", false));
@@ -185,10 +187,11 @@ public abstract class AbstractConnection implements Closeable {
      *            The new number of worker Threads to use.
      */
     public void changeThreadCount(byte newcount) {
-        if (newcount != THREADCOUNT) {
+        if (newcount != workerThreadCount) {
             List<Runnable> remainingTasks = workerThreadPool.shutdownNow(); // kill previous threadpool
             workerThreadPool =
                     Executors.newFixedThreadPool(newcount, new NameableThreadFactory("DbusWorkerThreads", false));
+            workerThreadCount = newcount;
             // re-schedule previously waiting tasks
             for (Runnable runnable : remainingTasks) {
                 workerThreadPool.execute(runnable);
