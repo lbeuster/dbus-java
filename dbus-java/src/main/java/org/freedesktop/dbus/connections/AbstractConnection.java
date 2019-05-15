@@ -189,7 +189,7 @@ public abstract class AbstractConnection implements Closeable {
      */
     public void changeThreadCount(byte _newPoolSize) {
         if (workerThreadPool.getMaximumPoolSize() != _newPoolSize) {
-            logger.debug("Changing thread count to {}", _newPoolSize);
+            logger.debug("Changing thread count to {}, old pool={}", _newPoolSize, workerThreadPool);
             ThreadPoolExecutor oldPool = workerThreadPool;
             workerThreadPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(_newPoolSize,
                     new NameableThreadFactory("DbusWorkerThreads", false));
@@ -199,7 +199,7 @@ public abstract class AbstractConnection implements Closeable {
             for (Runnable runnable : remainingTasks) {
                 workerThreadPool.execute(runnable);
             }
-            logger.debug("Changed thread count to {}", _newPoolSize);
+            logger.debug("Changed thread count to {}, new pool={}", _newPoolSize, workerThreadPool);
         }
     }
 
