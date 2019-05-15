@@ -35,6 +35,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.regex.Pattern;
 
 import org.freedesktop.dbus.DBusAsyncReply;
@@ -123,6 +126,7 @@ public abstract class AbstractConnection implements Closeable {
     private boolean                                                            connected        = false;
 
     private AbstractTransport                                                  transport;
+    private final ReadWriteLock                                                workerThreadPoolLock = new ReentrantReadWriteLock();
     private volatile ThreadPoolExecutor                                        workerThreadPool;
     
     
@@ -189,15 +193,18 @@ public abstract class AbstractConnection implements Closeable {
      */
     public void changeThreadCount(byte _newPoolSize) {
         if (workerThreadPool.getMaximumPoolSize() != _newPoolSize) {
-            logger.debug("Changing thread count to {}, old pool={}", _newPoolSize, workerThreadPool);
-            ThreadPoolExecutor oldPool = workerThreadPool;
-            workerThreadPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(_newPoolSize,
+            Lock writeLock = workerThreadPoolLock.writeLock();
+            try {
+                logger.debug("Changing thread count to {}, old pool={}", _newPoolSize, workerThreadPool);
+                List<Runnable> remainingTasks = workerThreadPool.shutdownNow(); // kill previous threadpool
+                workerThreadPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(_newPoolSize,
                     new NameableThreadFactory("DbusWorkerThreads", false));
-            
-            List<Runnable> remainingTasks = oldPool.shutdownNow(); // kill previous threadpool
-            // re-schedule previously waiting tasks
-            for (Runnable runnable : remainingTasks) {
-                workerThreadPool.execute(runnable);
+                // re-schedule previously waiting tasks
+                for (Runnable runnable : remainingTasks) {
+                    workerThreadPool.execute(runnable);
+                }
+            } finally {
+                writeLock.unlock();
             }
             logger.debug("Changed thread count to {}, new pool={}", _newPoolSize, workerThreadPool);
         }
@@ -757,7 +764,16 @@ public abstract class AbstractConnection implements Closeable {
                 }
             }
         };
-        workerThreadPool.execute(r);
+        executeInWorkerThread(r);
+    }
+    
+    private void executeInWorkerThread(Runnable runnable) {
+        Lock readLock = workerThreadPoolLock.readLock();
+        try {
+            workerThreadPool.execute(runnable);
+        } finally {
+            readLock.unlock();
+        }
     }
 
     /**
@@ -840,7 +856,7 @@ public abstract class AbstractConnection implements Closeable {
                 }
             };
             if (_useThreadPool) {
-                workerThreadPool.execute(command);
+                executeInWorkerThread(command);
             } else {
                 command.run();
             }
@@ -856,7 +872,7 @@ public abstract class AbstractConnection implements Closeable {
                 }
             };
             if (_useThreadPool) {
-                workerThreadPool.execute(command);
+                executeInWorkerThread(command);
             } else {
                 command.run();
             }
@@ -901,7 +917,7 @@ public abstract class AbstractConnection implements Closeable {
                         }
                     }
                 };
-                workerThreadPool.execute(command);
+                executeInWorkerThread(command);
             }
 
         } else {
@@ -960,7 +976,7 @@ public abstract class AbstractConnection implements Closeable {
                         }
                     }
                 };
-                workerThreadPool.execute(r);
+                executeInWorkerThread(r);
             }
 
         } else
