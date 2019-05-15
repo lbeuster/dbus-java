@@ -35,7 +35,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.regex.Pattern;
@@ -193,7 +192,7 @@ public abstract class AbstractConnection implements Closeable {
      */
     public void changeThreadCount(byte _newPoolSize) {
         if (workerThreadPool.getMaximumPoolSize() != _newPoolSize) {
-            Lock writeLock = workerThreadPoolLock.writeLock();
+            workerThreadPoolLock.writeLock().lock();
             try {
                 logger.debug("Changing thread count to {}, old pool={}", _newPoolSize, workerThreadPool);
                 List<Runnable> remainingTasks = workerThreadPool.shutdownNow(); // kill previous threadpool
@@ -204,7 +203,7 @@ public abstract class AbstractConnection implements Closeable {
                     workerThreadPool.execute(runnable);
                 }
             } finally {
-                writeLock.unlock();
+                workerThreadPoolLock.writeLock().unlock();
             }
             logger.debug("Changed thread count to {}, new pool={}", _newPoolSize, workerThreadPool);
         }
@@ -768,11 +767,11 @@ public abstract class AbstractConnection implements Closeable {
     }
     
     private void executeInWorkerThread(Runnable runnable) {
-        Lock readLock = workerThreadPoolLock.readLock();
+        workerThreadPoolLock.readLock().lock();
         try {
             workerThreadPool.execute(runnable);
         } finally {
-            readLock.unlock();
+            workerThreadPoolLock.readLock().unlock();
         }
     }
 
